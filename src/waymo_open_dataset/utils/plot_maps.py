@@ -195,11 +195,13 @@ def plot_map_points(map_points: MapPoints) -> go._figure.Figure:
   fig.update_layout(
       showlegend=False,
       scene=dict(xaxis=axis_config, yaxis=axis_config, zaxis=axis_config),
-      width=1600,
-      height=1200,
+      width=800,
+      height=600,
       paper_bgcolor='black',
       plot_bgcolor='rgba(0,0,0,0)',
       scene_aspectmode='data',
+      xaxis_range=[df['x'].min(), df['x'].max()],
+      yaxis_range=[df['y'].min(), df['y'].max()],
   )
   fig.update_yaxes(
       scaleanchor='x',
@@ -212,7 +214,7 @@ def plot_map_points(map_points: MapPoints) -> go._figure.Figure:
   camera = dict(
       up=dict(x=0, y=0, z=1),
       center=dict(x=0, y=0, z=0),
-      eye=dict(x=0, y=0, z=3),
+      eye=dict(x=0, y=0, z=5),
   )
   fig.update_layout(scene_camera=camera)
 
