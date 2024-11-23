@@ -11,6 +11,7 @@ from waymo_open_dataset.protos import scenario_pb2
 from waymo_open_dataset.utils import plot_maps
 from waymo_open_dataset.utils import trajectory_utils
 
+
 def get_box_vertices(x: float, y: float, z: float,
                      yaw: float, length: float, width: float, height=1.0
                      ) -> np.array:
@@ -40,8 +41,9 @@ def get_box_vertices(x: float, y: float, z: float,
         np.transpose(rotation_matrix_2d)) + translation_vec_2d
 
     # Add z cooridinate as well as the top four vertices.
-    return np.concatenate((np.insert(vertices_global_2d, 2, z, axis=1),
-                          np.insert(vertices_global_2d, 2, z+height, axis=1)))
+    return np.concatenate((np.insert(vertices_global_2d, 2, z-height, axis=1),
+                          np.insert(vertices_global_2d, 2, z, axis=1)))
+
 
 def add_one_object(figure: go._figure.Figure,
                    x: float, y: float, z: float, yaw: float,
@@ -70,6 +72,7 @@ def add_one_object(figure: go._figure.Figure,
                                color=box_dict[obj_type.numpy()][0],
                                opacity=.7,
                                flatshading=True))
+
 
 def add_traffic_signal_lane_state(figure: go._figure.Figure,
                                   pos: map_pb2.MapPoint,
@@ -101,6 +104,7 @@ def add_traffic_signal_lane_state(figure: go._figure.Figure,
             ),
         )
     )
+
 
 def plot_one_step(scenario: scenario_pb2.Scenario, time_idx: int):
     """
@@ -142,7 +146,7 @@ def plot_one_step(scenario: scenario_pb2.Scenario, time_idx: int):
 
     return figure, num_map_featues
 
-def animate_scenario(scenario: scenario_pb2.Scenario, time_idxs: List):
+def animate_scenario(scenario: scenario_pb2.Scenario, time_idxs: list):
     frames = []
     for idx in time_idxs:
         if idx not in range(len(scenario.timestamps_seconds)):
@@ -150,22 +154,73 @@ def animate_scenario(scenario: scenario_pb2.Scenario, time_idxs: List):
 
         fig_one_step, num_map_data = plot_one_step(scenario, idx)
         num_total_data = len(fig_one_step.data)
-        # # option 1: update only the dynamic part
-        # traces_for_update = list(range(num_map_data, num_total_data))
-        # frames.append(go.Frame(data=fig_one_step.data[num_map_data:num_total_data],
-        #                        layout=fig_one_step.layout,
-        #                        traces=traces_for_update, name=f"step {idx}"))
-        # option 2: update everything
-        traces_for_update = list(range(0, num_total_data))
-        frames.append(go.Frame(data=fig_one_step.data,
+        # option 1: update only the dynamic part
+        traces_for_update = list(range(num_map_data, num_total_data))
+        frames.append(go.Frame(data=fig_one_step.data[num_map_data:num_total_data],
                                layout=fig_one_step.layout,
                                traces=traces_for_update, name=f"step {idx}"))
+        # option 2: update everything
+        # traces_for_update = list(range(0, num_total_data))
+        # frames.append(go.Frame(data=fig_one_step.data,
+        #                        layout=fig_one_step.layout,
+        #                        traces=traces_for_update, name=f"step {idx}"))
 
         # fig_one_step.show()
         # time.sleep(3.0)
 
     # Redo the first frame for visualization
-    fig, _ = plot_one_step(scenario, time_idxs[0])
-    fig.update(frames=frames)
+    fig_all_steps, _ = plot_one_step(scenario, time_idxs[0])
+    fig_all_steps.update(frames=frames)
 
-    return fig
+    def frame_args(duration):
+        return {
+            "frame": {"duration": duration},
+            "mode": "immediate",
+            "fromcurrent": True,
+            "transition": {"duration": duration, "easing": "linear"},
+        }
+
+    updatemenus = [
+        {
+            "buttons": [
+                {
+                    "args": [None, frame_args(100)],
+                    "label": "&#9654;",  # play symbol
+                    "method": "animate",
+                },
+                {
+                    "args": [[None], frame_args(0)],
+                    "label": "&#9724;",  # pause symbol
+                    "method": "animate",
+                },
+            ],
+            "direction": "left",
+            "pad": {"r": 10, "t": 70},
+            "type": "buttons",
+                    "x": 0.1,
+                    "y": 0,
+        }
+    ]
+    sliders = [
+        {
+            "pad": {"b": 10, "t": 60},
+            "len": 0.9,
+            "x": 0.1,
+            "y": 0,
+            "steps": [
+                {
+                    "args": [[f.name], frame_args(0)],
+                    "label": str(k),
+                    "method": "animate",
+                }
+                for k, f in enumerate(fig_all_steps.frames)
+            ],
+        }
+    ]
+
+    # Add sliders and buttons.
+    fig_all_steps.update_layout(
+        updatemenus=updatemenus,
+        sliders=sliders
+    )
+    return fig_all_steps
