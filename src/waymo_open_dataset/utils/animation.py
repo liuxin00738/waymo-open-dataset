@@ -11,7 +11,6 @@ from waymo_open_dataset.protos import scenario_pb2
 from waymo_open_dataset.utils import plot_maps
 from waymo_open_dataset.utils import trajectory_utils
 
-
 def get_box_vertices(x: float, y: float, z: float,
                      yaw: float, length: float, width: float, height=1.0
                      ) -> np.array:
@@ -44,11 +43,10 @@ def get_box_vertices(x: float, y: float, z: float,
     return np.concatenate((np.insert(vertices_global_2d, 2, z, axis=1),
                           np.insert(vertices_global_2d, 2, z+height, axis=1)))
 
-
 def add_one_object(figure: go._figure.Figure,
                    x: float, y: float, z: float, yaw: float,
                    length: float, width: float, height: float,
-                   type: scenario_pb2.Track.ObjectType):
+                   obj_type: scenario_pb2.Track.ObjectType):
     """
     Add one object box to the given figure.
     """
@@ -69,10 +67,9 @@ def add_one_object(figure: go._figure.Figure,
                                i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2],
                                j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
                                k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
-                               color=box_dict[type],
+                               color=box_dict[obj_type.numpy()][0],
                                opacity=.7,
                                flatshading=True))
-
 
 def add_traffic_signal_lane_state(figure: go._figure.Figure,
                                   pos: map_pb2.MapPoint,
@@ -81,15 +78,15 @@ def add_traffic_signal_lane_state(figure: go._figure.Figure,
     visualize one lane state.
     """
     light_dict = {
-        map_pb2.TrafficSignalLaneState.LANE_STATE_UNKNOWN: ('grey', 'circle'),
-        map_pb2.TrafficSignalLaneState.LANE_STATE_ARROW_STOP: ('red', 'x'),
-        map_pb2.TrafficSignalLaneState.LANE_STATE_ARROW_CAUTION: ('yellow', 'x'),
-        map_pb2.TrafficSignalLaneState.LANE_STATE_ARROW_GO: ('green', 'x'),
-        map_pb2.TrafficSignalLaneState.LANE_STATE_STOP: ('red', 'circle'),
-        map_pb2.TrafficSignalLaneState.LANE_STATE_CAUTION: ('yellow', 'circle'),
-        map_pb2.TrafficSignalLaneState.LANE_STATE_GO: ('green', 'circle'),
-        map_pb2.TrafficSignalLaneState.LANE_STATE_FLASHING_STOP: ('red', 'circle-open'),
-        map_pb2.TrafficSignalLaneState.LANE_STATE_FLASHING_CAUTION: ('yellow', 'circle-open'),
+        map_pb2.TrafficSignalLaneState.LANE_STATE_UNKNOWN: ('grey', 'circle', 15),
+        map_pb2.TrafficSignalLaneState.LANE_STATE_ARROW_STOP: ('red', 'x', 6),
+        map_pb2.TrafficSignalLaneState.LANE_STATE_ARROW_CAUTION: ('yellow', 'x', 6),
+        map_pb2.TrafficSignalLaneState.LANE_STATE_ARROW_GO: ('green', 'x', 6),
+        map_pb2.TrafficSignalLaneState.LANE_STATE_STOP: ('red', 'circle', 15),
+        map_pb2.TrafficSignalLaneState.LANE_STATE_CAUTION: ('yellow', 'circle', 15),
+        map_pb2.TrafficSignalLaneState.LANE_STATE_GO: ('green', 'circle', 15),
+        map_pb2.TrafficSignalLaneState.LANE_STATE_FLASHING_STOP: ('red', 'circle-open', 15),
+        map_pb2.TrafficSignalLaneState.LANE_STATE_FLASHING_CAUTION: ('yellow', 'circle-open', 15),
     }
     figure.add_trace(
         go.Scatter3d(
@@ -99,12 +96,11 @@ def add_traffic_signal_lane_state(figure: go._figure.Figure,
             mode='markers',
             marker_symbol=light_dict[lane_state][1],
             marker=dict(
-                size=15,
+                size=light_dict[lane_state][2],
                 color=light_dict[lane_state][0],
             ),
         )
     )
-
 
 def plot_one_step(scenario: scenario_pb2.Scenario, time_idx: int):
     """
@@ -130,27 +126,30 @@ def plot_one_step(scenario: scenario_pb2.Scenario, time_idx: int):
     # Plot out the trajectories of the tracked agents.
     logged_trajectories = trajectory_utils.ObjectTrajectories.from_scenario(
         scenario)
-    for i in range(len(logged_trajectories.valid)):
+    for i in range(logged_trajectories.valid.shape[0]):
         if not logged_trajectories.valid[i, time_idx]:
             continue
-        add_one_object(figure, logged_trajectories.x[i, time_idx],
+        add_one_object(figure,
+                       logged_trajectories.x[i, time_idx],
                        logged_trajectories.y[i, time_idx],
                        logged_trajectories.z[i, time_idx],
                        logged_trajectories.heading[i, time_idx],
                        logged_trajectories.length[i, time_idx],
                        logged_trajectories.width[i, time_idx],
                        logged_trajectories.height[i, time_idx],
-                       logged_trajectories.object_type[i, time_idx]
+                       logged_trajectories.object_type[i]
                        )
 
     return figure, num_map_featues
 
-
-def animate_scenario(scenario: scenario_pb2.Scenario):
+def animate_scenario(scenario: scenario_pb2.Scenario, time_idxs: List):
     frames = []
-    for idx, _ in enumerate(scenario.timestamps_seconds):
+    for idx in time_idxs:
+        if idx not in range(len(scenario.timestamps_seconds)):
+            continue
+
         fig_one_step, num_map_data = plot_one_step(scenario, idx)
-        num_total_data = len(fig.data)
+        num_total_data = len(fig_one_step.data)
         # # option 1: update only the dynamic part
         # traces_for_update = list(range(num_map_data, num_total_data))
         # frames.append(go.Frame(data=fig_one_step.data[num_map_data:num_total_data],
@@ -166,6 +165,7 @@ def animate_scenario(scenario: scenario_pb2.Scenario):
         # time.sleep(3.0)
 
     # Redo the first frame for visualization
-    fig = fig_one_step(scenario, 0)
+    fig, _ = plot_one_step(scenario, time_idxs[0])
     fig.update(frames=frames)
+
     return fig
